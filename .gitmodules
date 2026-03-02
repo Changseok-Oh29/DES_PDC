@@ -1,0 +1,3 @@
+[submodule "ECU2_YOCTO"]
+	path = ECU2_YOCTO
+	url = https://github.com/leo9044/PDC_Yocto_Jetson-orin-nano.git
