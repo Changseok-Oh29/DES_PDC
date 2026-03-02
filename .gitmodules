@@ -1,3 +1,6 @@
 [submodule "ECU2_YOCTO"]
 	path = ECU2_YOCTO
 	url = https://github.com/leo9044/PDC_Yocto_Jetson-orin-nano.git
+[submodule "pdcMeta-ECU1"]
+	path = pdcMeta-ECU1
+	url = https://github.com/Changseok-Oh29/pdcMeta-ECU1.git
