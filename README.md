@@ -75,11 +75,11 @@ DES_PDC/
 ## ECU1 — Raspberry Pi 4
 
 - **OS**: Yocto Linux (custom `meta-vehiclecontrol` layer)
-- **Role**: Vehicle sensor hub and camera source
+- **Role**: Vehicle sensor hub, control hub and camera source
 - **Key functions**:
   - Receives speed and distance data from Arduino over CAN (MCP2518FD, 1000 kbps)
   - Reads gamepad input → publishes gear, speed, battery over SOME/IP
-  - Streams OV5647 rear camera via GStreamer RTP/UDP to ECU2
+  - Streams Pi Camera v1.3 via GStreamer RTP/UDP to ECU2
 - **SOME/IP**: VehicleControl service (ID `0x1234`, instance `0x5678`)
 - **Camera pipeline**: `libcamerasrc → x264enc → rtph264pay → udpsink`
 - **Network**: `eth0` at `192.168.1.100`
@@ -163,4 +163,4 @@ sudo ip addr add 192.168.1.101/24 dev eth0
 
 ## License
 
-MIT License — SEA:ME DES Project Team
+MIT License — SEA:ME
