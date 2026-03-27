@@ -5,24 +5,23 @@ A distributed automotive embedded system built on Yocto Linux, implementing a fu
 ## System Architecture
 
 ```
-┌─────────────────────────────┐         ┌──────────────────────────────────────────┐
-│        ECU1 — RPi 4         │         │        ECU2 — Jetson Orin Nano           │
-│     (meta-vehiclecontrol)   │         │        (meta-seame-headunit)             │
-│                             │  Eth    │                                          │
-│  VehicleControl Service ────┼─────────┼──► unified-compositor (Wayland HU)      │
-│  (SOME/IP server 0x1234)    │  SOME/IP│        ├── GearApp                      │
-│                             │         │        ├── HomeScreenApp                │
-│  Gamepad → gear/speed/      │         │        ├── MediaApp                     │
-│           battery data      │         │        ├── AmbientApp                   │
-│                             │         │        └── PDCApp (when gear=R)         │
-│  OV5647 Camera ─────────────┼─────────┼──► GStreamer RTP/UDP → PDCApp           │
-│  GStreamer RTP sender        │  UDP    │                                          │
-│  (192.168.1.100:5000)       │         │  ic-compositor (Wayland IC)             │
-│                             │         │        ├── Speedometer                  │
-│  MCP2518FD CAN bus          │         │        ├── BatteryMeter                 │
-│  (1000 kbps)                │         │        └── GearState                   │
-└─────────────────────────────┘         └──────────────────────────────────────────┘
-         192.168.1.100                               192.168.1.101
+┌──────────────────────┐    ┌─────────────────────────────┐         ┌──────────────────────────────────────────┐
+│  Arduino             │    │        ECU1 — RPi 4         │         │        ECU2 — Jetson Orin Nano           │
+│                      │    │     (meta-vehiclecontrol)   │         │        (meta-seame-headunit)             │
+│  Ultrasonic sensor   │    │                             │  Eth    │                                          │
+│  → distance (float)  │    │  VehicleControl Service ────┼─────────┼──► unified-compositor (Wayland)          │
+│                      │CAN │  (SOME/IP server 0x1234)    │  SOME/IP│        ├── GearApp          (HU)         │
+│  Wheel speed sensor  ├───►│                             │         │        ├── HomeScreenApp     (HU)        │
+│  → speed (cm/s)      │    │  Gamepad → gear/speed/      │         │        ├── MediaApp          (HU)        │
+│                      │    │           battery data      │         │        ├── AmbientApp        (HU)        │
+│  MCP2515 CAN         │    │                             │  Eth    │        ├── PDCApp (gear=R)   (HU)        │
+│  ID: 0x0F6           │    │  OV5647 Camera ─────────────┼─────────┼──►     ├── Speedometer       (IC)        │
+│  1000 KBPS           │    │  GStreamer RTP sender       │  UDP    │        ├── BatteryMeter      (IC)        │
+│  100ms cycle         │    │  (192.168.1.100:5000)       │         │        └── GearState         (IC)        │
+└──────────────────────┘    │                             │         │                                          │
+                            │  MCP2518FD CAN bus          │         │  GStreamer RTP/UDP → PDCApp camera feed  │
+                            └─────────────────────────────┘         └──────────────────────────────────────────┘
+                                     192.168.1.100                               192.168.1.101
 ```
 
 ## Repository Structure
@@ -60,14 +59,27 @@ DES_PDC/
     └── meta-vehiclecontrol/
 ```
 
+## Arduino
+
+- **Role**: Sensor node — measures distance and wheel speed, sends over CAN
+- **Sensors**:
+  - Ultrasonic sensor (TRIG pin 8, ECHO pin 7) — measures distance up to ~8.5m
+  - Wheel speed sensor (pin 3, interrupt-driven) — 20 pulses/rev, 20.083cm circumference
+- **CAN**: MCP2515 (SPI, CS pin 9), 1000 KBPS, CAN ID `0x0F6`
+- **Message format** (8 bytes, every 100ms):
+  - Bytes 0-2: speed in cm/s (integer high byte, integer low byte, 2 decimal places)
+  - Bytes 3-6: distance in cm (4-byte float)
+  - Byte 7: reserved
+- **Connected to**: RPi 4 via MCP2518FD CAN bus
+
 ## ECU1 — Raspberry Pi 4
 
 - **OS**: Yocto Linux (custom `meta-vehiclecontrol` layer)
 - **Role**: Vehicle sensor hub and camera source
 - **Key functions**:
+  - Receives speed and distance data from Arduino over CAN (MCP2518FD, 1000 kbps)
   - Reads gamepad input → publishes gear, speed, battery over SOME/IP
   - Streams OV5647 rear camera via GStreamer RTP/UDP to ECU2
-  - CAN bus interface via MCP2518FD (SPI, 1000 kbps)
 - **SOME/IP**: VehicleControl service (ID `0x1234`, instance `0x5678`)
 - **Camera pipeline**: `libcamerasrc → x264enc → rtph264pay → udpsink`
 - **Network**: `eth0` at `192.168.1.100`
@@ -78,9 +90,8 @@ DES_PDC/
 - **Role**: Display unit — instrument cluster (IC) + head unit (HU)
 - **Key functions**:
   - Subscribes to VehicleControl SOME/IP service for gear/speed/battery
-  - Renders IC display (speedometer, battery, gear state)
-  - Renders HU display (gear app, home, media, ambient, PDC camera)
-  - When gear = R: PDCApp appears on HU with live rear camera feed
+  - `unified-compositor` renders all apps — both IC (speedometer, battery, gear state) and HU (gear app, home, media, ambient)
+  - When gear = R: PDCApp appears on HU with live rear camera feed from ECU1
 - **Network**: `eth0` at `192.168.1.101`
 
 ## Per-App Docker Containers (OTA)
